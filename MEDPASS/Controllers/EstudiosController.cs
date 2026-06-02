@@ -1,4 +1,5 @@
 ﻿using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Authorization;
 using MEDPASS.Models;
 using MEDPASS.Services;
 
@@ -6,7 +7,8 @@ namespace MEDPASS.Controllers
 {
     [Route("v1/[controller]")]
     [ApiController]
-    public class EstudiosController : ControllerBase
+    [Authorize(Roles = "Medico,Paciente")]
+public class EstudiosController : ControllerBase
     {
         private readonly IEstudioService _servicioEstudio;
 
@@ -31,6 +33,7 @@ namespace MEDPASS.Controllers
             return Ok(estudio);
         }
 
+        [Authorize(Roles = "Medico")]
         [HttpPost]
         public async Task<IActionResult> CrearEstudio([FromBody] Estudio nuevoEstudio)
         {
@@ -40,6 +43,7 @@ namespace MEDPASS.Controllers
             return CreatedAtAction(nameof(GetEstudio), new { id = creado.Id }, creado);
         }
 
+        [Authorize(Roles = "Medico")]
         [HttpPatch("{id}")]
         public async Task<IActionResult> ActualizarEstudio(int id, [FromBody] Estudio estudioActualizar)
         {
@@ -49,6 +53,7 @@ namespace MEDPASS.Controllers
             return NoContent();
         }
 
+        [Authorize(Roles = "Medico")]
         [HttpDelete("{id}")]
         public async Task<IActionResult> EliminarEstudio(int id)
         {

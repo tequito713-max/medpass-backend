@@ -1,9 +1,11 @@
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Authorization;
 
 namespace MEDPASS.Controllers
 {
     [ApiController]
-    [Route("[controller]")]
+    [Authorize(Roles = "Medico,Paciente")]
+[Route("[controller]")]
     public class WeatherForecastController : ControllerBase
     {
         private static readonly string[] Summaries = new[]

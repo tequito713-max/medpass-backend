@@ -1,4 +1,5 @@
 ﻿using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Authorization;
 using MEDPASS.Models;
 using MEDPASS.Services;
 
@@ -6,7 +7,8 @@ namespace MEDPASS.Controllers
 {
     [Route("v1/[controller]")]
     [ApiController]
-    public class RecetasController : ControllerBase
+    [Authorize(Roles = "Medico,Paciente")]
+public class RecetasController : ControllerBase
     {
         private readonly IRecetaService _servicioReceta;
 
@@ -31,6 +33,7 @@ namespace MEDPASS.Controllers
             return Ok(receta);
         }
 
+        [Authorize(Roles = "Medico")]
         [HttpPost]
         public async Task<IActionResult> CrearReceta([FromBody] Receta nuevaReceta)
         {
@@ -40,6 +43,7 @@ namespace MEDPASS.Controllers
             return CreatedAtAction(nameof(GetReceta), new { id = creada.Id }, creada);
         }
 
+        [Authorize(Roles = "Medico")]
         [HttpPatch("{id}")]
         public async Task<IActionResult> ActualizarReceta(int id, [FromBody] Receta recetaActualizar)
         {
@@ -49,6 +53,7 @@ namespace MEDPASS.Controllers
             return NoContent();
         }
 
+        [Authorize(Roles = "Medico")]
         [HttpDelete("{id}")]
         public async Task<IActionResult> EliminarReceta(int id)
         {
