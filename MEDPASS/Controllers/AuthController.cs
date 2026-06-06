@@ -19,6 +19,9 @@ namespace MEDPASS.Controllers
             _configuration = configuration;
         }
 
+        // ==========================
+        // LOGIN
+        // ==========================
         [HttpPost("login")]
         public async Task<IActionResult> Login([FromBody] LoginRequest request)
         {
@@ -104,6 +107,164 @@ namespace MEDPASS.Controllers
             });
         }
 
+        // ==========================
+        // REGISTRAR PACIENTE + USUARIO
+        // ==========================
+        [HttpPost("registrar-paciente")]
+        public async Task<IActionResult> RegistrarPaciente([FromBody] RegistrarPacienteRequest request)
+        {
+            if (string.IsNullOrWhiteSpace(request.Curp) ||
+                string.IsNullOrWhiteSpace(request.Nombre) ||
+                string.IsNullOrWhiteSpace(request.Email) ||
+                string.IsNullOrWhiteSpace(request.Password))
+            {
+                return BadRequest(new
+                {
+                    ok = false,
+                    mensaje = "CURP, nombre, correo y contraseña son obligatorios."
+                });
+            }
+
+            string connectionString = _configuration.GetConnectionString("DefaultConnection")!;
+
+            using SqlConnection connection = new SqlConnection(connectionString);
+            await connection.OpenAsync();
+
+            using SqlTransaction transaction = connection.BeginTransaction();
+
+            try
+            {
+                using SqlCommand verificarEmail = new SqlCommand(@"
+                    SELECT COUNT(*)
+                    FROM Usuarios
+                    WHERE Email = @Email
+                ", connection, transaction);
+
+                verificarEmail.Parameters.AddWithValue("@Email", request.Email);
+
+                int existeEmail = Convert.ToInt32(await verificarEmail.ExecuteScalarAsync());
+
+                if (existeEmail > 0)
+                {
+                    transaction.Rollback();
+
+                    return BadRequest(new
+                    {
+                        ok = false,
+                        mensaje = "El correo ya se encuentra registrado."
+                    });
+                }
+
+                using SqlCommand verificarCurp = new SqlCommand(@"
+                    SELECT COUNT(*)
+                    FROM Pacientes
+                    WHERE CURP = @CURP
+                ", connection, transaction);
+
+                verificarCurp.Parameters.AddWithValue("@CURP", request.Curp);
+
+                int existeCurp = Convert.ToInt32(await verificarCurp.ExecuteScalarAsync());
+
+                if (existeCurp > 0)
+                {
+                    transaction.Rollback();
+
+                    return BadRequest(new
+                    {
+                        ok = false,
+                        mensaje = "La CURP ya se encuentra registrada."
+                    });
+                }
+
+                using SqlCommand crearPaciente = new SqlCommand(@"
+                    INSERT INTO Pacientes (CURP, Nombre, FechaNac, TipoSangre, Telefono, Email)
+                    VALUES (@CURP, @Nombre, @FechaNac, @TipoSangre, @Telefono, @Email);
+
+                    SELECT CAST(SCOPE_IDENTITY() AS INT);
+                ", connection, transaction);
+
+                crearPaciente.Parameters.AddWithValue("@CURP", request.Curp);
+                crearPaciente.Parameters.AddWithValue("@Nombre", request.Nombre);
+                crearPaciente.Parameters.AddWithValue("@FechaNac", request.FechaNac);
+                crearPaciente.Parameters.AddWithValue("@TipoSangre", request.TipoSangre ?? "");
+                crearPaciente.Parameters.AddWithValue("@Telefono", request.Telefono ?? "");
+                crearPaciente.Parameters.AddWithValue("@Email", request.Email);
+
+                int pacienteId = Convert.ToInt32(await crearPaciente.ExecuteScalarAsync());
+
+                using SqlCommand crearUsuario = new SqlCommand(@"
+                    INSERT INTO Usuarios (Nombre, Email, Password, Rol, PacienteId, MedicoId, MfaSecret, MfaEnabled)
+                    VALUES (@Nombre, @Email, @Password, 'Paciente', @PacienteId, NULL, NULL, 0);
+                ", connection, transaction);
+
+                crearUsuario.Parameters.AddWithValue("@Nombre", request.Nombre);
+                crearUsuario.Parameters.AddWithValue("@Email", request.Email);
+                crearUsuario.Parameters.AddWithValue("@Password", request.Password);
+                crearUsuario.Parameters.AddWithValue("@PacienteId", pacienteId);
+
+                await crearUsuario.ExecuteNonQueryAsync();
+
+                transaction.Commit();
+
+                return Ok(new
+                {
+                    ok = true,
+                    mensaje = "Paciente y usuario registrados correctamente.",
+                    paciente = new
+                    {
+                        id = pacienteId,
+                        curp = request.Curp,
+                        nombre = request.Nombre,
+                        fechaNac = request.FechaNac,
+                        tipoSangre = request.TipoSangre,
+                        telefono = request.Telefono,
+                        email = request.Email
+                    }
+                });
+            }
+            catch (SqlException ex) when (ex.Number == 2627 || ex.Number == 2601)
+            {
+                transaction.Rollback();
+
+                if (ex.Message.Contains("CURP") || ex.Message.Contains("UQ_Pacientes_CURP"))
+                {
+                    return BadRequest(new
+                    {
+                        ok = false,
+                        mensaje = "La CURP ya se encuentra registrada."
+                    });
+                }
+
+                if (ex.Message.Contains("Email") || ex.Message.Contains("UQ_Usuarios_Email") || ex.Message.Contains("UQ_Usuario_Email"))
+                {
+                    return BadRequest(new
+                    {
+                        ok = false,
+                        mensaje = "El correo ya se encuentra registrado."
+                    });
+                }
+
+                return BadRequest(new
+                {
+                    ok = false,
+                    mensaje = "Ya existe un registro con esos datos."
+                });
+            }
+            catch
+            {
+                transaction.Rollback();
+
+                return BadRequest(new
+                {
+                    ok = false,
+                    mensaje = "Error al crear paciente y usuario."
+                });
+            }
+        }
+
+        // ==========================
+        // CONFIGURAR MFA
+        // ==========================
         [HttpPost("configurar-mfa")]
         public async Task<IActionResult> ConfigurarMfa([FromBody] ConfigurarMfaRequest request)
         {
@@ -178,6 +339,9 @@ namespace MEDPASS.Controllers
             });
         }
 
+        // ==========================
+        // ACTIVAR MFA
+        // ==========================
         [HttpPost("activar-mfa")]
         public async Task<IActionResult> ActivarMfa([FromBody] VerificarMfaRequest request)
         {
@@ -233,6 +397,9 @@ namespace MEDPASS.Controllers
             });
         }
 
+        // ==========================
+        // VERIFICAR MFA
+        // ==========================
         [HttpPost("verificar-mfa")]
         public async Task<IActionResult> VerificarMfa([FromBody] VerificarMfaRequest request)
         {
@@ -293,6 +460,9 @@ namespace MEDPASS.Controllers
             });
         }
 
+        // ==========================
+        // MÉTODOS PRIVADOS
+        // ==========================
         private bool ValidarCodigoMfa(string secret, string codigo)
         {
             if (string.IsNullOrWhiteSpace(codigo))
@@ -388,8 +558,22 @@ namespace MEDPASS.Controllers
         }
     }
 
+    // ==========================
+    // MODELOS DEL AUTHCONTROLLER
+    // ==========================
     public class LoginRequest
     {
+        public string Email { get; set; } = string.Empty;
+        public string Password { get; set; } = string.Empty;
+    }
+
+    public class RegistrarPacienteRequest
+    {
+        public string Curp { get; set; } = string.Empty;
+        public string Nombre { get; set; } = string.Empty;
+        public DateTime FechaNac { get; set; }
+        public string TipoSangre { get; set; } = string.Empty;
+        public string Telefono { get; set; } = string.Empty;
         public string Email { get; set; } = string.Empty;
         public string Password { get; set; } = string.Empty;
     }
